@@ -99,6 +99,26 @@ power=16. `menu-state` reads vendor VCP `0xe1` and returns its numeric state.
 These vendor controls require the matching Adafruit RTD firmware; they are not
 standard commands for unrelated monitors.
 
+## Direct RTD ISP bus (GPIO4/5)
+
+For a bench check without the HSTX adapter, wire the display board's ISP I2C
+pins directly to the Feather: SDA = GPIO4, SCL = GPIO5, common ground, pull-ups
+to 3.3 V. 10k pull-ups are fine at the 100 kHz ISP speed (RTD boards usually
+add their own in parallel). Do not connect to a 5 V I2C rail: the RP2350 GPIOs
+are not 5 V tolerant.
+
+```powershell
+python host.py --serial YOUR_FEATHER_USB_SERIAL scan1   # list ACKing addresses
+python host.py --serial YOUR_FEATHER_USB_SERIAL i2c1 74 r 3   # raw read at 0x4A
+python host.py --serial YOUR_FEATHER_USB_SERIAL isp1   # enter ISP, read flash JEDEC
+```
+
+`scan1` scans the second bus (I2C0 on GPIO4/5). An RTD2660 in ISP mode answers
+at 0x4A, with 0x4B as the auto-increment address. `i2c1` performs one raw read
+or write. `isp1` enters ISP, reads the flash JEDEC ID and reports it even when
+the flash is not on the enabled W25X40 list. ISP halts the RTD MCU; power-cycle
+the display board to return to normal operation.
+
 Menu selects/finishes an adjustment, up/down move or adjust, and back returns
 one level. `0x8D=1` mutes audio; `0x8D=2` unmutes. `0xD6=4` requests soft power
 off and `0xD6=1` resumes. The [firmware control map](../../../../docs/ddcci.md)

@@ -24,6 +24,7 @@ alignas(Adafruit_DVI_Audio_GFX16)
 // Publish only after construction, pin configuration and begin() succeed.
 volatile bool videoReady = false;
 RTD266xISP flash;
+RTD266xISP flash1(Wire1); // Direct RTD ISP probing on the GPIO4/5 bus.
 uint16_t videoWidth = 0;
 int16_t sine[48]; // One 1 kHz period at 48 kHz.
 uint8_t phase = 0;
@@ -73,6 +74,12 @@ void setup() {
   Wire.begin();
   Wire.setClock(100000);
   Wire.setTimeout(100);
+  // Second bus for direct RTD ISP probing: physical I2C0 on GPIO4/5.
+  Wire1.setSDA(4);
+  Wire1.setSCL(5);
+  Wire1.begin();
+  Wire1.setClock(100000);
+  Wire1.setTimeout(100);
 }
 
 void setup1() {
@@ -278,6 +285,7 @@ void processCommand(char *line) {
   char *cmd = strtok(line, " ");
   char *arg1 = strtok(nullptr, " ");
   char *arg2 = strtok(nullptr, " ");
+  char *arg3 = strtok(nullptr, " ");
   if (strtok(nullptr, " ")) {
     printError("Too many arguments");
     return;
@@ -288,7 +296,8 @@ void processCommand(char *line) {
       !strcmp(cmd, "arm") || !strcmp(cmd, "unlock") ||
       !strcmp(cmd, "restore-protection") || !strcmp(cmd, "erase") ||
       !strcmp(cmd, "page") || !strcmp(cmd, "finish") ||
-      !strcmp(cmd, "reset") || !strcmp(cmd, "reset-chip"))) {
+      !strcmp(cmd, "isp1") || !strcmp(cmd, "reset") ||
+      !strcmp(cmd, "reset-chip"))) {
     printError("Use mode off before ISP or flash operations");
     return;
   }
@@ -331,6 +340,85 @@ void processCommand(char *line) {
       }
     }
     Serial.println("]}");
+  } else if (!strcmp(cmd, "scan1")) {
+    Serial.print("{\"ok\":true,\"addresses\":[");
+    bool first = true;
+    for (uint8_t i = 1; i < 127; i++) {
+      Wire1.beginTransmission(i);
+      if (Wire1.endTransmission() == 0) {
+        if (!first) {
+          Serial.print(',');
+        }
+        Serial.print(i);
+        first = false;
+      }
+    }
+    Serial.println("]}");
+  } else if (!strcmp(cmd, "i2c1")) {
+    uint32_t addr = 0;
+    size_t bytes = 0;
+    if (!arg1 || !arg2 || !arg3 || !number(arg1, addr) ||
+        addr == 0 || addr > 127) {
+      printError("i2c1 requires address 1..127, r <length> or w <hex>");
+    } else if (!strcmp(arg2, "r")) {
+      if (!number(arg3, length) || !length || length > 256) {
+        printError("i2c1 read length must be 1..256");
+      } else if (Wire1.requestFrom((uint8_t)addr, (uint8_t)length) != length) {
+        printError("i2c1 read failed or returned a short read");
+      } else {
+        for (size_t i = 0; i < length; i++) {
+          data[i] = Wire1.read();
+        }
+        Serial.print("{\"ok\":true,\"data\":\"");
+        printHex(data, length);
+        Serial.println("\"}");
+      }
+    } else if (!strcmp(arg2, "w")) {
+      if (!hexBytes(arg3, data, bytes) || !bytes) {
+        printError("i2c1 write payload must be 1..256 hex bytes");
+      } else {
+        Wire1.beginTransmission((uint8_t)addr);
+        bool ok = Wire1.write(data, bytes) == bytes;
+        if (ok) {
+          ok = Wire1.endTransmission() == 0;
+        }
+        if (!ok) {
+          printError("i2c1 write failed");
+        } else {
+          Serial.print("{\"ok\":true,\"written\":");
+          Serial.print(bytes);
+          Serial.println("}");
+        }
+      }
+    } else {
+      printError("i2c1 operation must be r or w");
+    }
+  } else if (!strcmp(cmd, "isp1")) {
+    uint8_t status;
+    if (flash1.enter()) {
+      if (!flash1.readStatus(status)) {
+        printError(flash1.error());
+      } else {
+        Serial.print("{\"ok\":true,\"jedec\":\"");
+        Serial.print(flash1.jedecId(), HEX);
+        Serial.print("\",\"size\":");
+        Serial.print(flash1.flashSize());
+        Serial.print(",\"status\":");
+        Serial.print(status);
+        Serial.println("}");
+      }
+    } else {
+      // A nonzero JEDEC proves the RTD answered; report it as a non-fatal
+      // mismatch so the host prints it. Total I2C failure stays ok:false.
+      uint32_t id = flash1.jedecId();
+      Serial.print("{\"ok\":");
+      Serial.print(id ? "true,\"supported\":false" : "false");
+      Serial.print(",\"error\":\"");
+      Serial.print(flash1.error());
+      Serial.print("\",\"jedec\":\"");
+      Serial.print(id, HEX);
+      Serial.println("\"}");
+    }
   } else if (!strcmp(cmd, "edid")) {
     if ((arg1 && !number(arg1, address)) || address > 7) {
       printError("EDID block must be 0 through 7");

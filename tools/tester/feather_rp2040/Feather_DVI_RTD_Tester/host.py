@@ -785,6 +785,13 @@ def argument_parser():
     sub.add_parser("list", help="List USB serial ports and mark RTD tester Feathers")
     sub.add_parser("info", help="Firmware version and current video mode")
     sub.add_parser("scan", help="Scan the HDMI DDC bus")
+    sub.add_parser("scan1", help="Scan the direct RTD ISP I2C bus on GPIO4/5")
+    i2c1 = sub.add_parser("i2c1", help="Raw I2C read/write on the GPIO4/5 bus")
+    i2c1.add_argument("address", type=lambda value: int(value, 0),
+                      help="I2C address, decimal or 0x-prefixed")
+    i2c1.add_argument("operation", choices=("r", "w"), help="r = read, w = write")
+    i2c1.add_argument("payload", help="read length 1..256, or write hex bytes")
+    sub.add_parser("isp1", help="Enter RTD ISP over GPIO4/5 and identify the flash")
     sub.add_parser("ddc-config", help="Read fixed DDC registers in ISP; preserve existing ISP")
     get_vcp = sub.add_parser("vcp-get", help="Get a live DDC/CI value through the HSTX tester")
     get_vcp.add_argument("code", type=lambda value: int(value, 0), help="Decimal or 0x-prefixed VCP code")
@@ -867,6 +874,16 @@ def main(argv=None):
                             or any(type(address) is not int or not 0 <= address < 128
                                    for address in addresses)):
                         raise TesterError("Invalid I2C scan response")
+                elif args.action == "scan1":
+                    result = client.command("scan1")
+                    addresses = result.get("addresses")
+                    if (not isinstance(addresses, list)
+                            or any(type(address) is not int or not 0 <= address < 128
+                                   for address in addresses)):
+                        raise TesterError("Invalid I2C scan response")
+                elif args.action == "i2c1":
+                    result = client.command("i2c1 {} {} {}".format(
+                        args.address, args.operation, args.payload))
                 elif args.action == "ddc-config":
                     result = ddc_config(client)
                 elif args.action in ("vcp-get", "vcp-set", "key", "menu-state"):
