@@ -63,6 +63,24 @@ def select_port(port=None, usb_serial=DEFAULT_SERIAL):
     return candidates[0].device
 
 
+def list_usb_ports():
+    """Enumerate USB serial ports; mark RTD tester Feathers by USB ID."""
+    ports = []
+    for port in list_ports.comports():
+        entry = {"port": port.device, "description": port.description,
+                 "hwid": port.hwid, "serial": port.serial_number}
+        if port.vid is not None and port.pid is not None:
+            entry["vid"] = f"0x{port.vid:04X}"
+            entry["pid"] = f"0x{port.pid:04X}"
+        if port.vid == 0x239A and port.pid == 0x8127:
+            entry["feather"] = "Feather RP2040 DVI RTD tester"
+        elif port.vid == 0x239A and port.pid == 0x814F:
+            entry["feather"] = "Feather RP2350 HSTX RTD tester"
+        ports.append(entry)
+    return {"operation": "list", "ports": ports,
+            "feathers": [p for p in ports if "feather" in p]}
+
+
 class Client:
     """One outstanding text command at a time; mutations are never retried."""
 
@@ -764,6 +782,7 @@ def argument_parser():
     parser.add_argument("--port", help="COM port; otherwise discover the Feather by USB ID")
     parser.add_argument("--serial", default=DEFAULT_SERIAL, help="Feather USB serial number")
     sub = parser.add_subparsers(dest="action", required=True)
+    sub.add_parser("list", help="List USB serial ports and mark RTD tester Feathers")
     sub.add_parser("info", help="Firmware version and current video mode")
     sub.add_parser("scan", help="Scan the HDMI DDC bus")
     sub.add_parser("ddc-config", help="Read fixed DDC registers in ISP; preserve existing ISP")
@@ -824,6 +843,8 @@ def main(argv=None):
         elif args.action == "restore-protection":
             result = restore_protection(args.port, args.serial, args.image,
                                         args.status, args.receipt)
+        elif args.action == "list":
+            result = list_usb_ports()
         else:
             # Refuse existing paths before even opening USB.
             if args.action in ("dump", "edid"):

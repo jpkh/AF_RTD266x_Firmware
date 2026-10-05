@@ -18,6 +18,7 @@ command. Install the Python dependency with `pip3 install pyserial`.
 From this repository's root:
 
 ```sh
+python tools/tester/feather_rp2040/Feather_DVI_RTD_Tester/host.py list
 python tools/tester/feather_rp2040/Feather_DVI_RTD_Tester/host.py info
 ```
 
