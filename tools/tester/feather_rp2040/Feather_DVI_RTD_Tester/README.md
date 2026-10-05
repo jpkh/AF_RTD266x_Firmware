@@ -100,8 +100,9 @@ mode if video initialization stalls; the watchdog is disabled before DDC work.
 
 ## Flash operations
 
-The enabled flash profile is **Winbond W25X40, JEDEC EF3013, 512 KiB**. Other
-flash IDs are refused. This is not yet a universal RTD266x programmer.
+The enabled flash profiles are **Winbond W25X40 (`EF3013`)** and
+**Zetta ZD25Q40 (`5E6013`)**, both 512 KiB. Other flash IDs are refused.
+This is not yet a universal RTD266x programmer.
 Reads check each block against the RTD hardware CRC. A backup performs two
 complete reads and saves only matching results, with a SHA256 JSON sidecar.
 

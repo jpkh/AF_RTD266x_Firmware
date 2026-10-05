@@ -194,7 +194,9 @@ the same connected HDMI cable. Select `mode off` before programming and return
 to `mode 640` afterward; mode changes reboot the Feather.
 Save matching complete reads of your own board's original flash and preserve
 its protection state before programming. The tested UC-586 has a W25X40
-(`EF3013`) with 512 KiB of flash. Other boards can have different flash and pins.
+(`EF3013`) with 512 KiB of flash. The driver also enables the Zetta ZD25Q40
+(`5E6013`), the same 512 KiB, found on other demo boards. Other boards can
+have different flash and pins.
 
 The programmer expects a full image. Build one from the new bank0 and the
 untouched tail of your own verified backup:

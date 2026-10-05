@@ -8,7 +8,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-/** Checked HDMI DDC access to an RTD2660 and its W25X40 flash. */
+/** Checked HDMI DDC access to an RTD2660 and its SPI flash. */
 class RTD266xISP {
 public:
   /** Fixed readable configuration register; no index or data ports. */
@@ -76,8 +76,6 @@ private:
   /** Auto-increment ISP address, used only for the fixed EC/ED snapshot. */
   static constexpr uint8_t ISP_INCREMENT_ADDRESS = 0x4B;
   static constexpr uint8_t ISP_SLAVE_ADDRESS_REGISTER = 0xEC;
-  static constexpr uint32_t W25X40_JEDEC = 0xEF3013;
-  static constexpr uint32_t W25X40_SIZE = 512 * 1024;
   static constexpr size_t PAGE_SIZE = 256;
   static constexpr size_t SECTOR_SIZE = 4096;
   static constexpr size_t WIRE_CHUNK = 16;
@@ -120,7 +118,20 @@ private:
     SPI_ERASE = 5,
   };
 
-  /** W25X40 instructions; this profile has ONE status register. */
+  /** Enabled flash profiles; each has ONE status register and standard SPI. */
+  struct FlashProfile {
+    uint32_t jedec;    ///< Three-byte JEDEC ID read through the RTD.
+    const char *name;  ///< Human-readable part name.
+    uint32_t size;     ///< Capacity in bytes.
+  };
+  static constexpr FlashProfile FLASH_PROFILES[] = {
+      {0xEF3013, "W25X40", 512 * 1024},
+      {0x5E6013, "ZD25Q40", 512 * 1024},
+  };
+  static constexpr size_t FLASH_PROFILE_COUNT =
+      sizeof(FLASH_PROFILES) / sizeof(FLASH_PROFILES[0]);
+
+  /** W25X40/ZD25Q40 instructions; both profiles share this command set. */
   enum FlashCommand : uint8_t {
     WRITE_STATUS = 0x01,
     PAGE_PROGRAM = 0x02,
@@ -158,7 +169,7 @@ private:
     } bits;
   };
 
-  /** W25X40 status register; bit 6 is reserved. */
+  /** Status register shared by both enabled profiles; bit 6 is reserved. */
   union FlashStatus {
     uint8_t value;
     struct {
@@ -191,6 +202,7 @@ private:
   bool requireActive();
   bool requireArmed();
   bool validRange(uint32_t address, size_t length);
+  const FlashProfile *findProfile(uint32_t jedec) const;
   bool writeRegister(uint8_t reg, uint8_t value);
   bool readRegister(uint8_t reg, uint8_t &value);
   bool writeBytes(uint8_t reg, const uint8_t *data, size_t length);

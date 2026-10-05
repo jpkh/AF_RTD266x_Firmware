@@ -40,6 +40,15 @@ bool RTD266xISP::validRange(uint32_t address, size_t length) {
   return true;
 }
 
+const RTD266xISP::FlashProfile *RTD266xISP::findProfile(uint32_t jedec) const {
+  for (size_t i = 0; i < FLASH_PROFILE_COUNT; i++) {
+    if (FLASH_PROFILES[i].jedec == jedec) {
+      return &FLASH_PROFILES[i];
+    }
+  }
+  return nullptr;
+}
+
 // Address 0x4A keeps the register address fixed, required for the data FIFO.
 // Raw transfers also let us reject every NACK and short read, including polls.
 bool RTD266xISP::writeBytes(uint8_t reg, const uint8_t *data, size_t length) {
@@ -164,11 +173,12 @@ bool RTD266xISP::enter() {
     return false;
   }
   _size = 0;
-  if (_jedec != W25X40_JEDEC) {
-    return fail("Unsupported flash: only W25X40 EF3013 is enabled");
+  const FlashProfile *profile = findProfile(_jedec);
+  if (!profile) {
+    return fail("Unsupported flash; enabled: W25X40 EF3013, ZD25Q40 5E6013");
   }
-  _size = W25X40_SIZE;
-  // Select the W25X40 opcodes in the RTD controller, not in flash storage.
+  _size = profile->size;
+  // Select the profile opcodes in the RTD controller, not in flash storage.
   if (!writeRegister(WREN_OPCODE, WRITE_ENABLE) ||
       !writeRegister(READ_OPCODE, READ_DATA) ||
       !writeRegister(PROGRAM_OPCODE, PAGE_PROGRAM) ||
@@ -252,7 +262,7 @@ bool RTD266xISP::readDDCConfig(DDCConfig &config) {
   return true;
 }
 
-/** Read the W25X40's single status byte; reads never unlock the flash. */
+/** Read the flash's single status byte; reads never unlock the flash. */
 bool RTD266xISP::readStatus(uint8_t &value) {
   _error = "";
   if (!_active) {
@@ -380,7 +390,7 @@ bool RTD266xISP::arm(uint32_t expectedJedec) {
   if (!requireActive()) {
     return false;
   }
-  if (expectedJedec != W25X40_JEDEC || expectedJedec != _jedec) {
+  if (expectedJedec != _jedec || !findProfile(expectedJedec)) {
     return fail("Arming JEDEC ID does not match the supported flash");
   }
   _armed = true;

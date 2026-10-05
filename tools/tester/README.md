@@ -25,7 +25,9 @@ python tools/tester/feather_rp2040/Feather_DVI_RTD_Tester/host.py info
 Use `--port` or `--serial` before the command to select a Feather when needed.
 Programming requires video off, a matching verified backup and explicit
 `--allow-write`; follow the full backup/recovery instructions in the RP2040
-tester's README. The enabled flash profile is W25X40, JEDEC EF3013, 512 KiB.
+tester's README. The enabled flash profiles are W25X40 (`EF3013`) and
+ZD25Q40 (`5E6013`), both 512 KiB. Add `--bus gpio` for the direct GPIO4/5
+ISP wiring instead of the HDMI DDC bus.
 After programming, explicitly run `reset-chip` while still in `mode off`.
 An MCU-only restart retained DDC state on the UC-586; whole-chip reset cleared it.
 

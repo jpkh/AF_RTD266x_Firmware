@@ -286,7 +286,8 @@ restarts a timed-out job. A mismatch reports expected and observed CRC values.
 `program --fast` always requests bank0 and uses that interface only when current
 firmware is running and supports it, video is off, and supplied full-size
 target/backup tails match.
-ISP must identify W25X40 (`EF3013`) with whole-flash protection
+ISP must identify an enabled flash (W25X40 `EF3013` or ZD25Q40 `5E6013`)
+with whole-flash protection
 (`status & 0x1c == 0x1c`) before any unlock or write. Partial protection such
 as `0x0c` requires normal full verification and restoration of full protection
 before fast updates are allowed.

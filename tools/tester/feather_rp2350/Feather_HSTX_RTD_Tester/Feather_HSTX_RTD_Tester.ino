@@ -25,6 +25,7 @@ alignas(Adafruit_DVI_Audio_GFX16)
 volatile bool videoReady = false;
 RTD266xISP flash;
 RTD266xISP flash1(Wire1); // Direct RTD ISP probing on the GPIO4/5 bus.
+RTD266xISP *isp = &flash; // Selected ISP bus; see the bus command.
 uint16_t videoWidth = 0;
 int16_t sine[48]; // One 1 kHz period at 48 kHz.
 uint8_t phase = 0;
@@ -147,7 +148,7 @@ void printResult(bool ok) {
   if (ok) {
     Serial.println("{\"ok\":true}");
   } else {
-    printError(flash.error());
+    printError(isp->error());
   }
 }
 
@@ -240,7 +241,7 @@ void ddcTransfer(const char *packet, const char *replyLength) {
     printError("DDC uses separate writes and reads, each at most 32 bytes");
     return;
   }
-  if (flash.active()) {
+  if (isp->active()) {
     printError("Live DDC requires the RTD firmware running, outside ISP");
     return;
   }
@@ -320,12 +321,14 @@ void processCommand(char *line) {
     // Recover the actual RTD state even if the Feather itself has rebooted.
     // An absent or unresponsive RTD is unknown, never a false running claim.
     bool ispActive;
-    if (flash.readISPState(ispActive)) {
+    if (isp->readISPState(ispActive)) {
       Serial.print(ispActive ? "true" : "false");
     } else {
       Serial.print("null");
     }
-    Serial.println("}");
+    Serial.print(",\"isp_bus\":\"");
+    Serial.print(isp == &flash1 ? "gpio" : "ddc");
+    Serial.println("\"}");
   } else if (!strcmp(cmd, "scan")) {
     Serial.print("{\"ok\":true,\"addresses\":[");
     bool first = true;
@@ -354,6 +357,23 @@ void processCommand(char *line) {
       }
     }
     Serial.println("]}");
+  } else if (!strcmp(cmd, "bus")) {
+    RTD266xISP *target = nullptr;
+    if (arg1 && !strcmp(arg1, "ddc")) {
+      target = &flash;
+    } else if (arg1 && !strcmp(arg1, "gpio")) {
+      target = &flash1;
+    }
+    if (!target) {
+      printError("bus must be ddc or gpio");
+    } else {
+      // Each driver object keeps its own session state, so switching the
+      // selected pointer is safe; mode changes still gate on both objects.
+      isp = target;
+      Serial.print("{\"ok\":true,\"bus\":\"");
+      Serial.print(arg1);
+      Serial.println("\"}");
+    }
   } else if (!strcmp(cmd, "i2c1")) {
     uint32_t addr = 0;
     size_t bytes = 0;
@@ -437,8 +457,8 @@ void processCommand(char *line) {
     RTD266xISP::DDCConfig config;
     if (arg1 || arg2) {
       printError("DDC configuration takes no arguments");
-    } else if (!flash.readDDCConfig(config)) {
-      printError(flash.error());
+    } else if (!isp->readDDCConfig(config)) {
+      printError(isp->error());
     } else {
       Serial.print("{\"ok\":true,\"registers\":{");
       for (size_t i = 0; i < RTD266xISP::DDC_REGISTER_COUNT; i++) {
@@ -459,13 +479,13 @@ void processCommand(char *line) {
     }
   } else if (!strcmp(cmd, "isp")) {
     uint8_t status;
-    if (!flash.enter() || !flash.readStatus(status)) {
-      printError(flash.error());
+    if (!isp->enter() || !isp->readStatus(status)) {
+      printError(isp->error());
     } else {
       Serial.print("{\"ok\":true,\"jedec\":\"");
-      Serial.print(flash.jedecId(), HEX);
+      Serial.print(isp->jedecId(), HEX);
       Serial.print("\",\"size\":");
-      Serial.print(flash.flashSize());
+      Serial.print(isp->flashSize());
       Serial.print(",\"status\":");
       Serial.print(status);
       Serial.println("}");
@@ -473,8 +493,8 @@ void processCommand(char *line) {
   } else if (!strcmp(cmd, "read")) {
     if (!number(arg1, address) || !number(arg2, length) || !length || length > 256) {
       printError("Read requires an address and length 1 through 256");
-    } else if (!flash.read(address, data, length)) {
-      printError(flash.error());
+    } else if (!isp->read(address, data, length)) {
+      printError(isp->error());
     } else {
       Serial.print("{\"ok\":true,\"address\":");
       Serial.print(address);
@@ -486,35 +506,35 @@ void processCommand(char *line) {
     if (!arg1 || strlen(arg1) != 6 || strspn(arg1, "0123456789abcdefABCDEF") != 6) {
       printError("Arm requires the six-digit flash JEDEC ID");
     } else {
-      printResult(flash.arm(strtoul(arg1, nullptr, 16)));
+      printResult(isp->arm(strtoul(arg1, nullptr, 16)));
     }
   } else if (!strcmp(cmd, "unlock")) {
-    printResult(flash.unlock());
+    printResult(isp->unlock());
   } else if (!strcmp(cmd, "restore-protection")) {
     if (!number(arg1, address) || address > 255) {
       printError("restore-protection requires a recorded status byte");
     } else {
-      printResult(flash.restoreProtection((uint8_t)address));
+      printResult(isp->restoreProtection((uint8_t)address));
     }
   } else if (!strcmp(cmd, "erase")) {
     if (!number(arg1, address)) {
       printError("Erase requires a sector address");
     } else {
-      printResult(flash.eraseSector(address));
+      printResult(isp->eraseSector(address));
     }
   } else if (!strcmp(cmd, "page")) {
     size_t bytes = 0;
     if (!number(arg1, address) || !hexBytes(arg2, data, bytes)) {
       printError("Page requires an address and 1 through 256 hex bytes");
     } else {
-      printResult(flash.programPage(address, data, bytes));
+      printResult(isp->programPage(address, data, bytes));
     }
   } else if (!strcmp(cmd, "finish")) {
-    printResult(flash.finish());
+    printResult(isp->finish());
   } else if (!strcmp(cmd, "reset")) {
-    printResult(flash.reset());
+    printResult(isp->reset());
   } else if (!strcmp(cmd, "reset-chip")) {
-    printResult(flash.resetChip());
+    printResult(isp->resetChip());
   } else if (!strcmp(cmd, "pattern")) {
     if (!display) {
       printError("Video is off; use mode 640 or mode 800");
@@ -524,7 +544,7 @@ void processCommand(char *line) {
       Serial.println("{\"ok\":true}");
     }
   } else if (!strcmp(cmd, "mode")) {
-    if (flash.active()) {
+    if (flash.active() || flash1.active()) {
       printError("Finish the ISP session before changing video mode");
     } else if (!arg1 || (strcmp(arg1, "640") && strcmp(arg1, "800") &&
                         strcmp(arg1, "panel") && strcmp(arg1, "off"))) {

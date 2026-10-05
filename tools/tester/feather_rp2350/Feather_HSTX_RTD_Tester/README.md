@@ -111,13 +111,16 @@ are not 5 V tolerant.
 python host.py --serial YOUR_FEATHER_USB_SERIAL scan1   # list ACKing addresses
 python host.py --serial YOUR_FEATHER_USB_SERIAL i2c1 74 r 3   # raw read at 0x4A
 python host.py --serial YOUR_FEATHER_USB_SERIAL isp1   # enter ISP, read flash JEDEC
+python host.py --serial YOUR_FEATHER_USB_SERIAL --bus gpio dump old_firmware.bin
 ```
 
 `scan1` scans the second bus (I2C0 on GPIO4/5). An RTD2660 in ISP mode answers
 at 0x4A, with 0x4B as the auto-increment address. `i2c1` performs one raw read
 or write. `isp1` enters ISP, reads the flash JEDEC ID and reports it even when
-the flash is not on the enabled W25X40 list. ISP halts the RTD MCU; power-cycle
-the display board to return to normal operation.
+the flash is not one of the enabled W25X40/ZD25Q40 profiles. `--bus gpio` routes
+the full dump/verify/program workflows through the direct bus; `--bus ddc` is
+the default HDMI DDC path. ISP halts the RTD MCU; run `reset-chip` or
+power-cycle the display board to return to normal operation.
 
 Menu selects/finishes an adjustment, up/down move or adjust, and back returns
 one level. `0x8D=1` mutes audio; `0x8D=2` unmutes. `0xD6=4` requests soft power

@@ -32,6 +32,7 @@ BANK_SIZE = 65536
 FULL_IMAGE_SIZE = 512 * 1024
 CRC_REGIONS = {"bank0": (1, 0, BANK_SIZE),
                "vendor-probe": (2, BANK_SIZE, 8192)}
+SUPPORTED_JEDECS = {"EF3013", "5E6013"}  # W25X40, ZD25Q40
 PATTERNS = ("bars", "checker", "red", "green", "blue", "gray", "black",
             "white", "grid", "text")
 VIRTUAL_KEYS = {"menu": 1, "back": 2, "up": 4, "down": 8, "power": 16}
@@ -489,8 +490,10 @@ def program_flash(client, target, backup, recover=False, fast=False):
         info["isp_active_at_entry"] = was_active
         if len(target) != info["size"] or len(backup) != info["size"]:
             raise TesterError("Target and backup must exactly match the flash capacity")
-        if fast and (info["jedec"].upper() != "EF3013" or info["status"] & 0x1c != 0x1c):
-            raise TesterError("Fast programming requires W25X40 (EF3013) with whole-flash "
+        if fast and (info["jedec"].upper() not in SUPPORTED_JEDECS
+                     or info["status"] & 0x1c != 0x1c):
+            raise TesterError("Fast programming requires an enabled flash "
+                              "(W25X40 EF3013 or ZD25Q40 5E6013) with whole-flash "
                               "protection (status & 0x1c == 0x1c). Use normal full "
                               "verification and restore full protection before --fast; "
                               "unlock/erase/program NOT attempted")
@@ -575,7 +578,7 @@ def program_flash(client, target, backup, recover=False, fast=False):
     return result
 
 
-def restore_protection(port, usb_serial, image, status, receipt):
+def restore_protection(port, usb_serial, image, status, receipt, bus="ddc"):
     """Recover a lost RAM protection setting only after exact full-image proof."""
     require_new(receipt, include_metadata=False)
     result = {"operation": "restore-protection", "image": str(image),
@@ -591,6 +594,9 @@ def restore_protection(port, usb_serial, image, status, receipt):
             raise TesterError("Status must be a byte with nonzero BP bits and WIP/WEL clear")
         with Client(port, usb_serial) as client:
             result["port"] = client.port
+            bus_response = client.command("bus " + bus)
+            if bus_response.get("bus") != bus:
+                raise TesterError("Bus selection was not confirmed")
             hello = client.hello(require_isp=True)
             if hello.get("video") != "off":
                 raise TesterError("Protection recovery requires video off; use 'mode off' "
@@ -598,8 +604,9 @@ def restore_protection(port, usb_serial, image, status, receipt):
             result["isp_active_at_entry"] = hello["isp_active"]
             info = client.isp()
             result.update({"flash": info, "before_status": info["status"]})
-            if info["jedec"].upper() != "EF3013" or info["size"] != len(expected):
-                raise TesterError("Protection recovery requires Winbond W25X40 EF3013")
+            if info["jedec"].upper() not in SUPPORTED_JEDECS or info["size"] != len(expected):
+                raise TesterError("Protection recovery requires an enabled flash "
+                                  "(W25X40 EF3013 or ZD25Q40 5E6013)")
             if (status ^ info["status"]) & 0xe0:
                 raise TesterError("Only BP bits may change; preserve current TB/SRP/reserved bits")
             actual = client.read_flash(info["size"], progress=progress("Recovery verify"))
@@ -781,6 +788,8 @@ def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", help="COM port; otherwise discover the Feather by USB ID")
     parser.add_argument("--serial", default=DEFAULT_SERIAL, help="Feather USB serial number")
+    parser.add_argument("--bus", choices=("ddc", "gpio"), default="ddc",
+                        help="ISP I2C bus: HDMI DDC (default) or direct GPIO4/5")
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("list", help="List USB serial ports and mark RTD tester Feathers")
     sub.add_parser("info", help="Firmware version and current video mode")
@@ -849,7 +858,7 @@ def main(argv=None):
             result = capture(args.output, args.device)
         elif args.action == "restore-protection":
             result = restore_protection(args.port, args.serial, args.image,
-                                        args.status, args.receipt)
+                                        args.status, args.receipt, bus=args.bus)
         elif args.action == "list":
             result = list_usb_ports()
         else:
@@ -864,6 +873,9 @@ def main(argv=None):
                         datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".json")
                 require_new(receipt, include_metadata=False)
             with Client(args.port, args.serial) as client:
+                bus = client.command("bus " + args.bus)
+                if bus.get("bus") != args.bus:
+                    raise TesterError("Bus selection was not confirmed")
                 hello = client.hello()
                 if args.action == "info":
                     result = hello
