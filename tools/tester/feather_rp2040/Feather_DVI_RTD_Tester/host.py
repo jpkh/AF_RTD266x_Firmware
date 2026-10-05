@@ -789,7 +789,7 @@ def argument_parser():
     parser.add_argument("--port", help="COM port; otherwise discover the Feather by USB ID")
     parser.add_argument("--serial", default=DEFAULT_SERIAL, help="Feather USB serial number")
     parser.add_argument("--bus", choices=("ddc", "gpio"), default="ddc",
-                        help="ISP I2C bus: HDMI DDC (default) or direct GPIO4/5")
+                        help="ISP and DDC/CI I2C bus: HDMI DDC (default) or direct GPIO4/5")
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("list", help="List USB serial ports and mark RTD tester Feathers")
     sub.add_parser("info", help="Firmware version and current video mode")

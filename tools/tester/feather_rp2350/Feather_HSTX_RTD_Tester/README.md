@@ -107,6 +107,10 @@ to 3.3 V. 10k pull-ups are fine at the 100 kHz ISP speed (RTD boards usually
 add their own in parallel). Do not connect to a 5 V I2C rail: the RP2350 GPIOs
 are not 5 V tolerant.
 
+On the PCB80050V9 bench board the same bus reaches the VGA connector:
+GPIO4 → VGA P12 (DDC SDA), GPIO5 → VGA P15 (DDC SCL), GND → VGA P10.
+See `docs/pcb80050v9.md` for the full bench documentation.
+
 ```powershell
 python host.py --serial YOUR_FEATHER_USB_SERIAL scan1   # list ACKing addresses
 python host.py --serial YOUR_FEATHER_USB_SERIAL i2c1 74 r 3   # raw read at 0x4A

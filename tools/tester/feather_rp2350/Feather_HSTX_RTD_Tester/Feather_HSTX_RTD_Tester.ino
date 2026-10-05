@@ -25,7 +25,8 @@ alignas(Adafruit_DVI_Audio_GFX16)
 volatile bool videoReady = false;
 RTD266xISP flash;
 RTD266xISP flash1(Wire1); // Direct RTD ISP probing on the GPIO4/5 bus.
-RTD266xISP *isp = &flash; // Selected ISP bus; see the bus command.
+RTD266xISP *isp = &flash;  // Selected ISP bus; see the bus command.
+TwoWire *ddcWire = &Wire;  // Selected DDC/CI and EDID bus; see the bus command.
 uint16_t videoWidth = 0;
 int16_t sine[48]; // One 1 kHz period at 48 kHz.
 uint8_t phase = 0;
@@ -196,30 +197,30 @@ bool hexBytes(const char *text, uint8_t *data, size_t &length) {
 bool readEdid(uint8_t block, uint8_t *data) {
   bool ok = true;
   if (block >= 2) {
-    Wire.beginTransmission(0x30);
-    Wire.write(block / 2);
-    ok = Wire.endTransmission() == 0;
+    ddcWire->beginTransmission(0x30);
+    ddcWire->write(block / 2);
+    ok = ddcWire->endTransmission() == 0;
   }
   for (uint16_t offset = 0; ok && offset < 128; offset += 32) {
-    Wire.beginTransmission(0x50);
-    Wire.write((uint8_t)((block % 2) * 128 + offset));
-    if (Wire.endTransmission(false)) {
+    ddcWire->beginTransmission(0x50);
+    ddcWire->write((uint8_t)((block % 2) * 128 + offset));
+    if (ddcWire->endTransmission(false)) {
       ok = false;
       break;
     }
-    if (Wire.requestFrom((uint8_t)0x50, (uint8_t)32) != 32) {
+    if (ddcWire->requestFrom((uint8_t)0x50, (uint8_t)32) != 32) {
       ok = false;
       break;
     }
     for (uint8_t i = 0; i < 32; i++) {
-      data[offset + i] = Wire.read();
+      data[offset + i] = ddcWire->read();
     }
   }
   // Also restore the segment pointer after a short read or lost ACK.
   if (block >= 2) {
-    Wire.beginTransmission(0x30);
-    Wire.write((uint8_t)0);
-    if (Wire.endTransmission()) {
+    ddcWire->beginTransmission(0x30);
+    ddcWire->write((uint8_t)0);
+    if (ddcWire->endTransmission()) {
       ok = false;
     }
   }
@@ -250,22 +251,22 @@ void ddcTransfer(const char *packet, const char *replyLength) {
   if (display) {
     feedAudio();
   }
-  Wire.setTimeout(10);
+  ddcWire->setTimeout(10);
   bool ok;
   if (reading) {
-    bytes = Wire.requestFrom(DDC_CI_ADDRESS, (uint8_t)length);
+    bytes = ddcWire->requestFrom(DDC_CI_ADDRESS, (uint8_t)length);
     ok = bytes == length;
     for (size_t i = 0; i < bytes; ++i) {
-      data[i] = Wire.read();
+      data[i] = ddcWire->read();
     }
   } else {
-    Wire.beginTransmission(DDC_CI_ADDRESS);
-    ok = Wire.write(data, bytes) == bytes;
+    ddcWire->beginTransmission(DDC_CI_ADDRESS);
+    ok = ddcWire->write(data, bytes) == bytes;
     if (ok) {
-      ok = Wire.endTransmission() == 0;
+      ok = ddcWire->endTransmission() == 0;
     }
   }
-  Wire.setTimeout(100); // Restore the existing timeout for EDID and ISP.
+  ddcWire->setTimeout(100); // Restore the existing timeout for EDID and ISP.
   if (display) {
     feedAudio();
   }
@@ -370,6 +371,7 @@ void processCommand(char *line) {
       // Each driver object keeps its own session state, so switching the
       // selected pointer is safe; mode changes still gate on both objects.
       isp = target;
+      ddcWire = target == &flash1 ? &Wire1 : &Wire;
       Serial.print("{\"ok\":true,\"bus\":\"");
       Serial.print(arg1);
       Serial.println("\"}");
